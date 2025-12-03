@@ -985,3 +985,579 @@ if pareto_results:
         json.dump(results_to_save, f, indent=2, ensure_ascii=False)
     
     print("✅ Результаты сохранены в файл 'diploma_results.json'")
+
+    # ИНТЕРАКТИВНЫЕ ВИЗУАЛИЗАЦИИ С PLOTLY
+print("\n" + "=" * 100)
+print("📊 СОЗДАНИЕ ИНТЕРАКТИВНЫХ ВИЗУАЛИЗАЦИЙ")
+print("=" * 100)
+
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    from plotly.subplots import make_subplots
+    import plotly.io as pio
+    import pandas as pd
+    import os
+    
+    # Настройки для Plotly
+    pio.templates.default = "plotly_white"
+    
+    print("✅ Plotly успешно импортирован")
+    
+    if pareto_results and len(pareto_results) > 0:
+        # Создаем DataFrame для удобства
+        df_pareto = pd.DataFrame(pareto_results)
+        
+        # 1. ИНТЕРАКТИВНЫЙ 3D ПАРЕТО-ФРОНТ
+        print("\n1. Создание исправленного интерактивного 3D графика Парето-фронта...")
+        
+        # Создаем цветовое кодирование по типам моделей
+        model_colors = {
+            'RandomForest': '#FF6B6B',
+            'GradientBoosting': '#4ECDC4', 
+            'SVM': '#45B7D1',
+            'LogisticRegression': '#96CEB4'
+        }
+        
+        # Создаем отдельные trace для каждой модели
+        fig_3d = go.Figure()
+        
+        for model_name in df_pareto['model_name'].unique():
+            model_data = df_pareto[df_pareto['model_name'] == model_name]
+            
+            fig_3d.add_trace(go.Scatter3d(
+                x=model_data['training_time'],
+                y=model_data['complexity'],
+                z=model_data['accuracy'],
+                mode='markers',
+                marker=dict(
+                    size=8,
+                    color=model_colors.get(model_name, '#95A5A6'),
+                    opacity=0.8,
+                    line=dict(width=1, color='DarkSlateGrey')
+                ),
+                text=[f"Модель: {row['model_name']}<br>Точность: {row['accuracy']:.3f}<br>Время: {row['training_time']:.3f}с<br>Сложность: {row['complexity']}" 
+                      for _, row in model_data.iterrows()],
+                hoverinfo='text',
+                name=model_name
+            ))
+        
+        # Добавляем лучшие решения с КОРРЕКТНЫМ символом
+        if 'best_solution' in locals() and best_solution:
+            fig_3d.add_trace(go.Scatter3d(
+                x=[best_solution['training_time']],
+                y=[best_solution['complexity']],
+                z=[best_solution['accuracy']],
+                mode='markers+text',
+                marker=dict(
+                    size=15,
+                    color='gold',
+                    symbol='diamond',
+                    line=dict(width=2, color='black')
+                ),
+                text=["Лучшее решение (TOPSIS)"],
+                hoverinfo='text',
+                name='Лучшее решение'
+            ))
+        
+        fig_3d.update_layout(
+            title=dict(
+                text='<b>3D Визуализация Парето-фронта</b><br>Accuracy vs Time vs Complexity',
+                x=0.5,
+                font=dict(size=20)
+            ),
+            scene=dict(
+                xaxis_title='<b>Время обучения (сек)</b>',
+                yaxis_title='<b>Сложность модели</b>',
+                zaxis_title='<b>Точность (Accuracy)</b>',
+                camera=dict(
+                    eye=dict(x=1.5, y=1.5, z=1.5)
+                )
+            ),
+            width=1000,
+            height=700,
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
+            )
+        )
+        
+        # Сохраняем и показываем
+        fig_3d.write_html("pareto_3d_interactive_fixed.html")
+        print("✅ 3D график сохранен как 'pareto_3d_interactive_fixed.html'")
+        
+        # 2. ПРОСТЫЕ И ЭФФЕКТИВНЫЕ 2D ГРАФИКИ
+        print("\n2. Создание простых и эффективных 2D графиков...")
+        
+        # График 1: Accuracy vs Training Time
+        fig_scatter = px.scatter(
+            df_pareto,
+            x='training_time',
+            y='accuracy',
+            color='model_name',
+            size='complexity',
+            hover_data=['param1', 'param2'],
+            title='<b>Accuracy vs Training Time</b>',
+            labels={
+                'training_time': 'Время обучения (сек)',
+                'accuracy': 'Точность',
+                'model_name': 'Модель',
+                'complexity': 'Сложность'
+            },
+            color_discrete_map=model_colors
+        )
+        
+        fig_scatter.update_layout(
+            width=800,
+            height=600,
+            title_x=0.5
+        )
+        
+        fig_scatter.write_html("scatter_plot.html")
+        print("✅ Scatter plot сохранен как 'scatter_plot.html'")
+        
+        # График 2: Гистограмма распределения точности по моделям
+        fig_hist = px.box(
+            df_pareto,
+            x='model_name',
+            y='accuracy',
+            color='model_name',
+            title='<b>Распределение точности по типам моделей</b>',
+            labels={
+                'model_name': 'Тип модели',
+                'accuracy': 'Точность'
+            },
+            color_discrete_map=model_colors
+        )
+        
+        fig_hist.update_layout(
+            width=800,
+            height=500,
+            title_x=0.5,
+            showlegend=False
+        )
+        
+        fig_hist.write_html("box_plot.html")
+        print("✅ Box plot сохранен как 'box_plot.html'")
+        
+        # 3. ИНТЕРАКТИВНАЯ ТАБЛИЦА РЕЗУЛЬТАТОВ
+        print("\n3. Создание интерактивной таблицы результатов...")
+        
+        # Форматируем данные для таблицы
+        table_data = []
+        for i, sol in enumerate(pareto_results, 1):
+            if sol['model_name'] == 'RandomForest':
+                params = f"n_est={sol['param1']}, max_d={sol['param2']}"
+            elif sol['model_name'] == 'GradientBoosting':
+                params = f"n_est={sol['param1']}, lr={sol['param2']/100:.3f}"
+            elif sol['model_name'] == 'SVM':
+                params = f"C={sol['param1']/10:.1f}, gamma={sol['param2']/100:.3f}"
+            else:
+                params = f"C={sol['param1']/10:.1f}"
+            
+            # TOPSIS score
+            topsis_score = ""
+            if 'closeness_scores' in locals() and i <= len(closeness_scores):
+                topsis_score = f"{closeness_scores[i-1]:.4f}"
+            
+            table_data.append({
+                'Ранг': i,
+                'Модель': sol['model_name'],
+                'Параметры': params,
+                'Точность': f"{sol['accuracy']:.3f}",
+                'Время (сек)': f"{sol['training_time']:.3f}",
+                'Сложность': sol['complexity'],
+                'TOPSIS Score': topsis_score
+            })
+        
+        df_table = pd.DataFrame(table_data)
+        
+        # Создаем интерактивную таблицу
+        fig_table = go.Figure(data=[go.Table(
+            header=dict(
+                values=list(df_table.columns),
+                fill_color='#2C3E50',
+                align='center',
+                font=dict(size=12, color='white'),
+                height=40
+            ),
+            cells=dict(
+                values=[df_table[col] for col in df_table.columns],
+                fill_color='#ECF0F1',
+                align='center',
+                font=dict(size=11),
+                height=30
+            )
+        )])
+        
+        fig_table.update_layout(
+            title=dict(
+                text='<b>Таблица Парето-оптимальных решений</b>',
+                x=0.5,
+                font=dict(size=16)
+            ),
+            width=1200,
+            height=600
+        )
+        
+        fig_table.write_html("interactive_table_simple.html")
+        print("✅ Интерактивная таблица сохранена как 'interactive_table_simple.html'")
+        
+        # 4. КРУГОВАЯ ДИАГРАММА РАСПРЕДЕЛЕНИЯ МОДЕЛЕЙ
+        print("\n4. Создание круговой диаграммы распределения моделей...")
+        
+        model_counts = df_pareto['model_name'].value_counts()
+        
+        fig_pie = px.pie(
+            values=model_counts.values,
+            names=model_counts.index,
+            title='<b>Распределение моделей в Парето-фронте</b>',
+            color=model_counts.index,
+            color_discrete_map=model_colors
+        )
+        
+        fig_pie.update_layout(
+            width=600,
+            height=500,
+            title_x=0.5
+        )
+        
+        fig_pie.update_traces(
+            textposition='inside',
+            textinfo='percent+label'
+        )
+        
+        fig_pie.write_html("pie_chart.html")
+        print("✅ Круговая диаграмма сохранена как 'pie_chart.html'")
+        
+        # 5. ПРОСТОЙ ДАШБОРД
+        print("\n5. Создание простого дашборда...")
+        
+        dashboard_html = f"""
+        <!DOCTYPE html>
+        <html lang="ru">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>📊 Дашборд: Результаты оптимизации</title>
+            <style>
+                * {{
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }}
+                
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: #333;
+                    line-height: 1.6;
+                    padding: 20px;
+                }}
+                
+                .container {{
+                    max-width: 1400px;
+                    margin: 0 auto;
+                }}
+                
+                .header {{
+                    text-align: center;
+                    background: white;
+                    padding: 30px;
+                    border-radius: 15px;
+                    margin-bottom: 30px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                }}
+                
+                .header h1 {{
+                    color: #2c3e50;
+                    margin-bottom: 10px;
+                }}
+                
+                .stats-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 20px;
+                    margin-bottom: 30px;
+                }}
+                
+                .stat-card {{
+                    background: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    text-align: center;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+                    transition: transform 0.3s;
+                }}
+                
+                .stat-card:hover {{
+                    transform: translateY(-5px);
+                }}
+                
+                .stat-value {{
+                    font-size: 32px;
+                    font-weight: bold;
+                    color: #667eea;
+                    margin-bottom: 5px;
+                }}
+                
+                .stat-label {{
+                    font-size: 14px;
+                    color: #666;
+                }}
+                
+                .graph-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+                    gap: 25px;
+                    margin-bottom: 30px;
+                }}
+                
+                .graph-card {{
+                    background: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+                }}
+                
+                .graph-title {{
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: #2c3e50;
+                    margin-bottom: 15px;
+                    text-align: center;
+                }}
+                
+                .graph-container {{
+                    width: 100%;
+                    height: 400px;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }}
+                
+                iframe {{
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }}
+                
+                .result-summary {{
+                    background: white;
+                    padding: 25px;
+                    border-radius: 10px;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+                    margin-bottom: 30px;
+                }}
+                
+                .result-summary h3 {{
+                    color: #2c3e50;
+                    margin-bottom: 15px;
+                }}
+                
+                .download-links {{
+                    text-align: center;
+                    margin-top: 30px;
+                }}
+                
+                .download-btn {{
+                    display: inline-block;
+                    background: #667eea;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 25px;
+                    text-decoration: none;
+                    margin: 0 10px;
+                    transition: background 0.3s;
+                }}
+                
+                .download-btn:hover {{
+                    background: #764ba2;
+                }}
+                
+                @media (max-width: 768px) {{
+                    .graph-grid {{
+                        grid-template-columns: 1fr;
+                    }}
+                    
+                    .stat-card {{
+                        padding: 15px;
+                    }}
+                    
+                    .stat-value {{
+                        font-size: 24px;
+                    }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>📊 Результаты гибридной оптимизации ML-моделей</h1>
+                    <p>Многокритериальная иерархическая оптимизация с использованием NSGA-II, AHP и TOPSIS</p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">{len(pareto_results)}</div>
+                        <div class="stat-label">Парето-решений</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-value">{len(df_pareto['model_name'].unique())}</div>
+                        <div class="stat-label">Типов моделей</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-value">{df_pareto['accuracy'].max():.3f}</div>
+                        <div class="stat-label">Макс. точность</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-value">{df_pareto['training_time'].min():.3f}с</div>
+                        <div class="stat-label">Мин. время</div>
+                    </div>
+                </div>
+                
+                <div class="result-summary">
+                    <h3>🎯 Итоги оптимизации</h3>
+                    <p>Алгоритм NSGA-II успешно нашел {len(pareto_results)} Парето-оптимальных решений, представляющих наилучшие компромиссы между точностью, временем обучения и сложностью модели.</p>
+                    
+                    {'<p><strong>Лучшее решение (TOPSIS):</strong> ' + best_solution["model_name"] + 
+                    f' (Accuracy: {best_solution["accuracy"]:.3f}, Time: {best_solution["training_time"]:.3f}с, Complexity: {best_solution["complexity"]})</p>' 
+                    if 'best_solution' in locals() and best_solution else ''}
+                </div>
+                
+                <div class="graph-grid">
+                    <div class="graph-card">
+                        <div class="graph-title">Accuracy vs Training Time</div>
+                        <div class="graph-container">
+                            <iframe src="scatter_plot.html"></iframe>
+                        </div>
+                    </div>
+                    
+                    <div class="graph-card">
+                        <div class="graph-title">Распределение моделей в Парето-фронте</div>
+                        <div class="graph-container">
+                            <iframe src="pie_chart.html"></iframe>
+                        </div>
+                    </div>
+                    
+                    <div class="graph-card">
+                        <div class="graph-title">Распределение точности по моделям</div>
+                        <div class="graph-container">
+                            <iframe src="box_plot.html"></iframe>
+                        </div>
+                    </div>
+                    
+                    <div class="graph-card">
+                        <div class="graph-title">Таблица всех решений</div>
+                        <div class="graph-container">
+                            <iframe src="interactive_table_simple.html"></iframe>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="download-links">
+                    <a href="pareto_3d_interactive_fixed.html" class="download-btn" target="_blank">📈 3D Парето-фронт</a>
+                    <a href="scatter_plot.html" class="download-btn" target="_blank">📊 Scatter Plot</a>
+                    <a href="interactive_table_simple.html" class="download-btn" target="_blank">📋 Таблица</a>
+                    <a href="box_plot.html" class="download-btn" target="_blank">📦 Box Plot</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Сохраняем дашборд
+        with open('simple_dashboard.html', 'w', encoding='utf-8') as f:
+            f.write(dashboard_html)
+        
+        print("\n✅ Простой дашборд сохранен как 'simple_dashboard.html'")
+        
+        # 6. СОХРАНЕНИЕ ДАННЫХ ДЛЯ ЭКСПОРТА
+        print("\n6. Сохранение данных для экспорта...")
+        
+        # Сохраняем результаты в CSV
+        df_pareto.to_csv('pareto_results.csv', index=False, encoding='utf-8')
+        
+        # Сохраняем лучшие решения в отдельный файл
+        if 'best_solution' in locals() and best_solution:
+            df_best = pd.DataFrame([best_solution])
+            df_best.to_csv('best_solution.csv', index=False, encoding='utf-8')
+        
+        print("✅ Данные сохранены в CSV файлы:")
+        print("   • pareto_results.csv - все Парето-оптимальные решения")
+        print("   • best_solution.csv - лучшее решение")
+        
+        # 7. ВЫВОД ИНСТРУКЦИЙ
+        print("\n📁 СОЗДАННЫЕ ФАЙЛЫ:")
+        print(f"   1. pareto_3d_interactive_fixed.html   - 3D визуализация Парето-фронта")
+        print(f"   2. scatter_plot.html                 - 2D график Accuracy vs Time")
+        print(f"   3. box_plot.html                     - распределение точности по моделям")
+        print(f"   4. pie_chart.html                    - распределение моделей")
+        print(f"   5. interactive_table_simple.html     - интерактивная таблица")
+        print(f"   6. simple_dashboard.html             - дашборд со всеми графиками")
+        print(f"   7. pareto_results.csv                - данные в CSV формате")
+        print(f"   8. best_solution.csv                 - лучшее решение в CSV")
+        
+        print("\n📍 ПУТИ К ФАЙЛАМ:")
+        base_path = os.path.abspath('.')
+        print(f"   Все файлы сохранены в: {base_path}")
+        
+        print("\n🎉 ИНТЕРАКТИВНЫЕ ВИЗУАЛИЗАЦИИ УСПЕШНО СОЗДАНЫ!")
+
+    else:
+        print("❌ Нет данных для создания визуализаций. Проверьте результаты оптимизации.")
+        
+except ImportError as e:
+    print(f"❌ Ошибка импорта Plotly: {e}")
+    print("   Установите необходимые библиотеки:")
+    print("   pip install plotly pandas")
+    print("   Или используйте статические графики matplotlib для визуализации.")
+    
+except Exception as e:
+    print(f"❌ Ошибка при создании интерактивных графиков: {e}")
+    import traceback
+    traceback.print_exc()
+    print("\n📌 Рекомендации по устранению ошибки:")
+    print("   1. Проверьте установку plotly: pip install plotly")
+    print("   2. Убедитесь, что есть данные для визуализации")
+    print("   3. Попробуйте создать только простые графики:")
+    
+    # Создаем простые графики с matplotlib как fallback
+    try:
+        import matplotlib.pyplot as plt
+        print("\n🔄 Создание простых графиков с matplotlib...")
+        
+        if pareto_results and len(pareto_results) > 0:
+            # Простой scatter plot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            colors = {'RandomForest': 'red', 'GradientBoosting': 'blue', 
+                     'SVM': 'green', 'LogisticRegression': 'orange'}
+            
+            for model_name in set(sol['model_name'] for sol in pareto_results):
+                model_points = [sol for sol in pareto_results if sol['model_name'] == model_name]
+                times = [p['training_time'] for p in model_points]
+                accuracies = [p['accuracy'] for p in model_points]
+                
+                ax.scatter(times, accuracies, color=colors.get(model_name, 'gray'), 
+                          label=model_name, s=50, alpha=0.7)
+            
+            ax.set_xlabel('Время обучения (сек)')
+            ax.set_ylabel('Точность (Accuracy)')
+            ax.set_title('Accuracy vs Training Time')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig('simple_scatter_plot.png', dpi=300)
+            plt.close()
+            
+            print("✅ Простой график сохранен как 'simple_scatter_plot.png'")
+            
+    except Exception as e2:
+        print(f"❌ Ошибка при создании простых графиков: {e2}")
